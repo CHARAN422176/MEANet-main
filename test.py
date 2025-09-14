@@ -18,53 +18,36 @@ def f_measure(pred, gt, beta2=0.3):
     f = (1 + beta2) * prec * recall / (beta2 * prec + recall + 1e-8)
     return f
 
-def divide_gt(gt):
+def s_measure(pred, gt):
+    pred = pred.astype(np.float32)
+    gt = gt.astype(np.float32)
+    alpha = 0.5
+    # object-aware similarity
+    fg = pred[gt == 1]
+    bg = pred[gt == 0]
+    o_fg = np.mean(fg) if fg.size > 0 else 0
+    o_bg = np.mean(bg) if bg.size > 0 else 0
+    object_score = alpha * o_fg + (1 - alpha) * (1 - o_bg)
+    # region-aware similarity (divide into 4 regions)
     h, w = gt.shape
-    X, Y = np.where(gt == 1)
-    if len(X) == 0 or len(Y) == 0:
-        x, y = w // 2, h // 2
-    else:
-        x, y = int(np.mean(Y)), int(np.mean(X))
-    return x, y
-
-def s_object(pred, gt):
-    fg = pred * gt
-    bg = (1 - pred) * (1 - gt)
-    u_fg = np.mean(fg[gt==1]) if np.sum(gt==1) > 0 else 0
-    u_bg = np.mean(bg[gt==0]) if np.sum(gt==0) > 0 else 0
-    return (u_fg + u_bg) / 2.0
-
-def s_region(pred, gt):
-    h, w = gt.shape
-    x, y = divide_gt(gt)
-    gt1, gt2, gt3, gt4 = gt[:y, :x], gt[:y, x:], gt[y:, :x], gt[y:, x:]
-    pr1, pr2, pr3, pr4 = pred[:y, :x], pred[:y, x:], pred[y:, :x], pred[y:, x:]
-    def safe_ssim(a,b):
-        a = (a - a.min())/(a.max()-a.min()+1e-8)
-        b = (b - b.min())/(b.max()-b.min()+1e-8)
-        return np.corrcoef(a.flatten(), b.flatten())[0,1] if a.size>0 else 0
-    Q1 = safe_ssim(pr1, gt1)
-    Q2 = safe_ssim(pr2, gt2)
-    Q3 = safe_ssim(pr3, gt3)
-    Q4 = safe_ssim(pr4, gt4)
-    return (Q1+Q2+Q3+Q4)/4.0
-
-def s_measure(pred, gt, alpha=0.5):
-    pred = (pred - pred.min()) / (pred.max()-pred.min()+1e-8)
-    gt = (gt>0.5).astype(np.float32)
-    if gt.sum() == 0:
-        return 1 - pred.mean()
-    elif gt.sum() == gt.size:
-        return pred.mean()
-    else:
-        So = s_object(pred, gt)
-        Sr = s_region(pred, gt)
-        return alpha*So + (1-alpha)*Sr
+    y, x = h // 2, w // 2
+    gt_quads = [gt[:y, :x], gt[:y, x:], gt[y:, :x], gt[y:, x:]]
+    pr_quads = [pred[:y, :x], pred[:y, x:], pred[y:, :x], pred[y:, x:]]
+    region_score = 0
+    for gq, pq in zip(gt_quads, pr_quads):
+        region_score += np.mean(1 - np.abs(pq - gq))
+    region_score /= 4.0
+    return 0.5 * (object_score + region_score)
 
 def e_measure(pred, gt):
-    pred = (pred - pred.min())/(pred.max()-pred.min()+1e-8)
-    gt = (gt>0.5).astype(np.float32)
-    return 1 - np.mean((pred - gt)**2)
+    pred = pred.astype(np.float32)
+    gt = gt.astype(np.float32)
+    fm = np.mean(pred)
+    gt_mean = np.mean(gt)
+    align_matrix = 2 * (pred - fm) * (gt - gt_mean) / (
+        (pred - fm) ** 2 + (gt - gt_mean) ** 2 + 1e-8
+    )
+    return np.mean((align_matrix + 1) ** 2 / 4)
 # -----------------------------------------
 
 torch.cuda.set_device(0)
@@ -115,7 +98,7 @@ for dataset in test_datasets:
         res = res.sigmoid().data.cpu().numpy().squeeze()
         res = (res - res.min())/(res.max()-res.min()+1e-8)
 
-        # save prediction
+        # save prediction as grayscale uint8
         imageio.imsave(save_path+name, (res*255).astype(np.uint8))
 
         # compute metrics
