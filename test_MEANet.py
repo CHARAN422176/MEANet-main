@@ -15,10 +15,10 @@ argument = parser.add_argument('--testsize', type=int, default=352, help='testin
 args = parser.parse_args()
 opt = args
 
-dataset_path = './datasets/'
+dataset_path = '/kaggle/input/eorssd'
 
 model = MEANet()
-model.load_state_dict(torch.load('./models/MEANet/MEANet_EORSSD.pth'))
+model.load_state_dict(torch.load('/kaggle/input/meanet/pytorch/default/1/MEANet_EORSSD.pth'))
 
 model.cuda()
 model.eval()
