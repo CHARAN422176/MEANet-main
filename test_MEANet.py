@@ -15,7 +15,7 @@ argument = parser.add_argument('--testsize', type=int, default=352, help='testin
 args = parser.parse_args()
 opt = args
 
-dataset_path = '/kaggle/input'
+dataset_path = '/kaggle/input/'
 
 model = MEANet()
 model.load_state_dict(torch.load('/kaggle/input/meanet/pytorch/default/1/MEANet_EORSSD.pth'))
